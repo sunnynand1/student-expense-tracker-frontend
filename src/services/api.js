@@ -2,7 +2,7 @@ import axios from 'axios';
 import { toast } from 'react-toastify';
 
 // Use environment variable or default to relative path (proxy handles the base URL in development)
-const API_URL = process.env.REACT_APP_API_URL || '/api';
+const API_URL = "https://student-expense-tracker-backend.onrender.com/api";
 
 // Navigation will be handled by React Router's useNavigate hook
 let navigate = null;

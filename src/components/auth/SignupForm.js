@@ -97,7 +97,7 @@ export default function SignupForm() {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`${process.env.REACT_APP_API_URL}/auth/register`, {
+      const response = await fetch(`https://student-expense-tracker-backend.onrender.com/api/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

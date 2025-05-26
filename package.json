@@ -53,7 +53,7 @@
       "last 1 safari version"
     ]
   },
-  "proxy": "http://localhost:5000",
+  "proxy": "https://student-expense-tracker-backend.onrender.com",
   "devDependencies": {
     "autoprefixer": "^9.8.8",
     "postcss": "^7.0.39",

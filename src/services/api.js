@@ -77,7 +77,7 @@ api.interceptors.request.use(
     });
     
     // Skip adding auth header for login/register requests
-    const publicEndpoints = ['/auth/login', '/auth/register', '/auth/refresh-token'];
+    const publicEndpoints = ['/auth/login', '/auth/register'];
     const isPublicEndpoint = publicEndpoints.some(endpoint => 
       config.url.endsWith(endpoint)
     );
@@ -158,25 +158,31 @@ api.interceptors.response.use(
       originalRequest._retry = true;
       
       try {
-        // Try to refresh the token
-        const refreshResponse = await axios.post(`${API_URL}/auth/refresh-token`, {}, {
-          withCredentials: true,
-          headers: { 
-            'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest'
+        console.log('Token expired, attempting to refresh...');
+        
+        // Get current token to send with refresh request
+        const currentToken = getAuthToken();
+        
+        // Try to refresh the token, sending the current token in multiple ways
+        const response = await api.post('/auth/refresh-token', { token: currentToken }, {
+          headers: {
+            'Authorization': `Bearer ${currentToken}`,
+            'x-auth-token': currentToken
           }
         });
         
-        const { token } = refreshResponse.data;
-        
-        if (token) {
-          // Update the stored token
+        if (response.data?.token) {
+          console.log('Token refreshed successfully');
+          
+          // Update token in localStorage
           const user = JSON.parse(localStorage.getItem('user') || '{}');
-          user.token = token;
+          user.token = response.data.token;
           localStorage.setItem('user', JSON.stringify(user));
           
-          // Update the authorization header and retry the original request
-          originalRequest.headers.Authorization = `Bearer ${token}`;
+          // Update Authorization header for the original request
+          originalRequest.headers.Authorization = `Bearer ${response.data.token}`;
+          
+          // Retry the original request
           return api(originalRequest);
         } else {
           throw new Error('No token received in refresh response');

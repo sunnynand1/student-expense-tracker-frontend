@@ -63,13 +63,25 @@ export default function LoginForm() {
         refreshToken: response.data.refreshToken || ''
       };
       
-      console.log('Storing user data in localStorage');
+      console.log('Storing user data in localStorage', userData);
       
       localStorage.setItem('user', JSON.stringify(userData));
       localStorage.setItem('lastLogin', Date.now().toString());
       
       // Set the default authorization header for all future requests
       api.defaults.headers.common['Authorization'] = `Bearer ${userData.token}`;
+      
+      // Verify token is properly set
+      console.log('Authorization header set:', api.defaults.headers.common['Authorization']);
+      
+      // Make a test request to /auth/me to verify authentication works
+      try {
+        const meResponse = await authAPI.getMe();
+        console.log('Authentication verified:', meResponse.data);
+      } catch (verifyError) {
+        console.warn('Could not verify authentication:', verifyError);
+        // Continue anyway since login was successful
+      }
       
       setSuccess('Login successful! Redirecting...');
       

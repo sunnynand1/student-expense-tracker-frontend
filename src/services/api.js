@@ -15,7 +15,13 @@ const setNavigate = (navigateFn) => {
 const getAuthToken = () => {
   try {
     const user = JSON.parse(localStorage.getItem('user') || '{}');
-    return user?.token || '';
+    const token = user?.token || '';
+    if (token) {
+      console.log('Retrieved token from localStorage:', `${token.substring(0, 10)}...`);
+    } else {
+      console.warn('No token found in localStorage');
+    }
+    return token;
   } catch (error) {
     console.error('Error getting auth token:', error);
     return '';
@@ -163,12 +169,15 @@ api.interceptors.response.use(
         // Get current token to send with refresh request
         const currentToken = getAuthToken();
         
+        console.log('Attempting to refresh token with current token:', currentToken ? `${currentToken.substring(0, 10)}...` : 'none');
+        
         // Try to refresh the token, sending the current token in multiple ways
         const response = await api.post('/auth/refresh-token', { token: currentToken }, {
           headers: {
             'Authorization': `Bearer ${currentToken}`,
             'x-auth-token': currentToken
-          }
+          },
+          withCredentials: true // Ensure cookies are sent
         });
         
         if (response.data?.token) {
@@ -298,9 +307,20 @@ export const authAPI = {
     withCredentials: true
   }),
   
-  getMe: () => api.get('/auth/me', {
-    withCredentials: true
-  }),
+  getMe: async () => {
+    // Get current token
+    const token = getAuthToken();
+    
+    console.log('Making getMe request with token:', token ? `${token.substring(0, 10)}...` : 'none');
+    
+    return api.get('/auth/me', {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'x-auth-token': token
+      },
+      withCredentials: true
+    });
+  },
   
   logout: () => {
     // Clear user data from localStorage

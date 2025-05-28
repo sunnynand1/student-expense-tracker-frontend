@@ -51,14 +51,7 @@ const api = axios.create({
   xsrfHeaderName: 'X-XSRF-TOKEN'
 });
 
-// Handle network errors
-const handleNetworkError = (error) => {
-  if (error.message === 'Network Error') {
-    toast.error('Unable to connect to the server. Please check your connection and try again.');
-    return Promise.reject(new Error('Unable to connect to the server. Please check your connection and try again.'));
-  }
-  return Promise.reject(error);
-};
+// Network error handling is now done in the response interceptor
 
 // Helper function to handle forced logout
 const forceLogout = () => {
@@ -212,7 +205,6 @@ api.interceptors.response.use(
       } catch (refreshError) {
         console.error('Failed to refresh token:', refreshError);
         forceLogout();
-        toast.error('Your session has expired. Please login again.');
         return Promise.reject(refreshError);
       }
     }
@@ -232,17 +224,16 @@ api.interceptors.response.use(
       if (error.response.status === 401) {
         console.log('Authentication failed, forcing logout...');
         forceLogout();
-        toast.error('Your session has expired. Please login again.');
       } else if (error.response.status === 403) {
-        toast.error('You do not have permission to perform this action.');
+        console.warn('Permission denied:', error.response.data?.message);
       } else if (error.response.status === 404) {
-        toast.error('The requested resource was not found.');
+        console.warn('Resource not found:', error.response.data?.message);
       } else if (error.response.status >= 500) {
-        toast.error('Server error. Please try again later.');
+        console.error('Server error:', error.response.data?.message);
       } else {
-        // Show error message from server if available
+        // Log error message from server if available
         const errorMessage = error.response.data?.message || `Request failed with status ${error.response.status}`;
-        toast.error(errorMessage);
+        console.error(errorMessage);
       }
       
       return Promise.reject(error.response.data || new Error(`Request failed with status ${error.response.status}`));
@@ -258,7 +249,7 @@ api.interceptors.response.use(
           withCredentials: error.config?.withCredentials
         }
       });
-      toast.error('Unable to connect to the server. Please check your internet connection and try again.');
+      console.error('Unable to connect to the server. Please check your internet connection and try again.');
       return Promise.reject(new Error('Unable to connect to the server. Please check your internet connection and try again.'));
     } else {
       // Something happened in setting up the request that triggered an Error
@@ -267,7 +258,7 @@ api.interceptors.response.use(
         stack: error.stack,
         config: error.config
       });
-      toast.error('An error occurred while setting up the request.');
+      console.error('An error occurred while setting up the request.');
       return Promise.reject(new Error('An error occurred while setting up the request.'));
     }
   }
@@ -394,18 +385,9 @@ export const documentsAPI = {
 // Reports API
 export const reportsAPI = {
   getReport: (startDate, endDate) => api.get('/reports', {
-    params: { startDate, endDate }
+    params: { startDate, endDate },
+    timeout: 15000 // Increase timeout for reports which may take longer to generate
   })
-};
-
-// Team API
-export const teamAPI = {
-  getAll: () => api.get('/team'),
-  getById: (id) => api.get(`/team/${id}`),
-  invite: (memberData) => api.post('/team/invite', memberData),
-  update: (id, updates) => api.put(`/team/${id}`, updates),
-  delete: (id) => api.delete(`/team/${id}`),
-  acceptInvite: (token) => api.get(`/team/accept/${token}`)
 };
 
 // Export the API instance and other utilities

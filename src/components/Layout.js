@@ -2,14 +2,12 @@ import { Fragment, useState } from 'react';
 import { Dialog, Transition, Menu } from '@headlessui/react';
 import {
   BellIcon,
-  CalendarIcon,
   ChartBarIcon,
   FolderIcon,
   HomeIcon,
   InboxIcon,
   Bars3Icon,
   UserIcon,
-  UserGroupIcon,
   XMarkIcon,
   BanknotesIcon,
   CreditCardIcon,
@@ -26,9 +24,7 @@ const navigation = [
   { name: 'Expenses', href: '/expenses', icon: BanknotesIcon, current: false },
   { name: 'Budgets', href: '/budgets', icon: ChartBarIcon, current: false },
   { name: 'Reports', href: '/reports', icon: ChartPieIcon, current: false },
-  { name: 'Calendar', href: '/calendar', icon: CalendarIcon, current: false },
   { name: 'Documents', href: '/documents', icon: FolderIcon, current: false },
-  { name: 'Team', href: '/team', icon: UserGroupIcon, current: false },
 ];
 
 function classNames(...classes) {

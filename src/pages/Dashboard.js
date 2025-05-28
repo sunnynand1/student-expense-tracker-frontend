@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api, { expensesAPI, setNavigate } from '../services/api';
 import { toast } from 'react-toastify';
@@ -6,12 +6,12 @@ import 'react-toastify/dist/ReactToastify.css';
 
 const Dashboard = () => {
   const [expenses, setExpenses] = useState([]);
-  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState(null);
   const [category, setCategory] = useState('food');
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
   
@@ -20,10 +20,11 @@ const Dashboard = () => {
     setNavigate(navigate);
   }, [navigate]);
 
-  const fetchExpenses = async () => {
+  // Memoize fetchExpenses with useCallback
+  const fetchExpenses = useCallback(async () => {
     try {
-      setIsLoading(true);
-      setError('');
+      setLoading(true);
+      setErrorMessage('');
       
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       if (!user?.token) {
@@ -49,14 +50,14 @@ const Dashboard = () => {
         toast.error('Your session has expired. Please log in again.');
         navigate('/login');
       } else {
-        setError(err.response?.data?.message || 'Failed to load expenses. Please try again.');
+        setErrorMessage(err.response?.data?.message || 'Failed to load expenses. Please try again.');
         toast.error(err.response?.data?.message || 'Failed to load expenses');
       }
       throw err;
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  };
+  }, [navigate]); // Add navigate as a dependency since it's used in the function
 
   // Check authentication on component mount
   useEffect(() => {
@@ -80,7 +81,7 @@ const Dashboard = () => {
     };
     
     checkAuth();
-  }, [navigate]);
+  }, [navigate, fetchExpenses]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -186,13 +187,13 @@ const Dashboard = () => {
             toast.error('Your session has expired. Please login again.');
             navigate('/login');
           } else {
-            setError('Failed to load dashboard. Please try refreshing the page.');
+            setErrorMessage('Failed to load dashboard. Please try refreshing the page.');
             toast.error('Failed to load dashboard data');
           }
         }
       } finally {
         if (isMounted) {
-          setIsLoading(false);
+          setLoading(false);
         }
       }
     };
@@ -202,9 +203,9 @@ const Dashboard = () => {
     return () => {
       isMounted = false;
     };
-  }, [navigate]);
+  }, [navigate, fetchExpenses]);
 
-  if (isLoading) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -281,10 +282,15 @@ const Dashboard = () => {
                       onChange={(e) => setCategory(e.target.value)}
                       className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     >
-                      <option value="food">Food</option>
-                      <option value="transport">Transport</option>
+                      <option value="food">Food & Dining</option>
+                      <option value="transportation">Transportation</option>
+                      <option value="utilities">Utilities</option>
                       <option value="entertainment">Entertainment</option>
-                      <option value="bills">Bills</option>
+                      <option value="shopping">Shopping</option>
+                      <option value="health">Healthcare</option>
+                      <option value="education">Education</option>
+                      <option value="personal">Personal Care</option>
+                      <option value="travel">Travel</option>
                       <option value="other">Other</option>
                     </select>
                   </div>
@@ -356,9 +362,14 @@ const Dashboard = () => {
                               <div className="flex-shrink-0 h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
                                 <span className="text-blue-600">
                                   {expense.category === 'food' && '🍔'}
-                                  {expense.category === 'transport' && '🚗'}
+                                  {expense.category === 'transportation' && '🚗'}
+                                  {expense.category === 'utilities' && '🔌'}
                                   {expense.category === 'entertainment' && '🎬'}
-                                  {expense.category === 'bills' && '🧾'}
+                                  {expense.category === 'shopping' && '🛍️'}
+                                  {expense.category === 'health' && '🏥'}
+                                  {expense.category === 'education' && '🎓'}
+                                  {expense.category === 'personal' && '💇'}
+                                  {expense.category === 'travel' && '✈️'}
                                   {expense.category === 'other' && '📝'}
                                 </span>
                               </div>

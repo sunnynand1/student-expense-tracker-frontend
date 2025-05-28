@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import { reportsAPI } from '../services/api';
 import { toast } from 'react-toastify';
@@ -31,29 +31,106 @@ const Reports = () => {
     { id: 'other', name: 'Other' }
   ];
 
-  // Fetch report data
-  const fetchReportData = async () => {
+  // Fetch report data with retry capability
+  const fetchReportData = async (retryCount = 0) => {
     setLoading(true);
+    setError(null); // Clear previous errors
+    
+    // Validate date range before sending request
+    const startDateObj = new Date(dateRange.startDate);
+    const endDateObj = new Date(dateRange.endDate);
+    
+    if (isNaN(startDateObj.getTime()) || isNaN(endDateObj.getTime())) {
+      setError('Invalid date format');
+      toast.error('Invalid date format');
+      setLoading(false);
+      return;
+    }
+    
+    if (endDateObj < startDateObj) {
+      setError('End date cannot be before start date');
+      toast.error('End date cannot be before start date');
+      setLoading(false);
+      return;
+    }
+    
     try {
+      // Log the request parameters for debugging
+      console.log('Fetching report data with parameters:', {
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate,
+        retryAttempt: retryCount
+      });
+      
       const response = await reportsAPI.getReport(dateRange.startDate, dateRange.endDate);
-      if (response.data.success) {
-        setReportData(response.data.data);
+      
+      // Check if we have a successful response
+      if (response.data && response.data.success) {
+        // Initialize with default values if any data is missing
+        const reportDataWithDefaults = {
+          totalExpenses: response.data.data?.totalExpenses || 0,
+          expensesByCategory: response.data.data?.expensesByCategory || [],
+          expensesByMonth: response.data.data?.expensesByMonth || [],
+          budgetComparison: response.data.data?.budgetComparison || []
+        };
+        
+        setReportData(reportDataWithDefaults);
+        setError(null);
       } else {
-        setError('Failed to fetch report data');
-        toast.error('Failed to fetch report data');
+        const errorMsg = response.data?.message || 'Failed to fetch report data';
+        setError(errorMsg);
+        toast.error(errorMsg);
       }
     } catch (err) {
       console.error('Error fetching report data:', err);
-      setError('Error fetching report data. Please try again.');
-      toast.error('Error fetching report data. Please try again.');
+      
+      // Determine if this is a network error or server error
+      const isNetworkError = !err.response && err.message === 'Network Error';
+      const isServerError = err.response?.status >= 500;
+      
+      // If it's a network error or server error and we haven't retried too many times, retry
+      if ((isNetworkError || isServerError) && retryCount < 2) {
+        console.log(`Retrying report fetch (attempt ${retryCount + 1})...`);
+        toast.info(`Connection issue detected. Retrying... (${retryCount + 1}/2)`);
+        
+        // Wait a bit before retrying (exponential backoff)
+        const retryDelay = 1000 * Math.pow(2, retryCount);
+        setTimeout(() => {
+          fetchReportData(retryCount + 1);
+        }, retryDelay);
+        return;
+      }
+      
+      // Format a user-friendly error message
+      let errorMessage = 'Error fetching report data. Please try again.';
+      
+      if (isNetworkError) {
+        errorMessage = 'Unable to connect to the server. Please check your internet connection.';
+      } else if (isServerError) {
+        errorMessage = 'The server encountered an error. Our team has been notified.';
+      } else if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
-      setLoading(false);
+      if (retryCount === 0 || retryCount >= 2) {
+        setLoading(false);
+      }
     }
   };
 
-  useEffect(() => {
+  // Using useCallback to memoize the fetchReportData function
+  const memoizedFetchReportData = useCallback(() => {
     fetchReportData();
-  }, [dateRange]);
+  }, [dateRange]); // dateRange is the only external dependency
+
+  useEffect(() => {
+    memoizedFetchReportData();
+  }, [memoizedFetchReportData]); // Now correctly depends on the memoized function
 
   // Handle date range change
   const handleDateChange = (e) => {

@@ -67,7 +67,7 @@ const Budgets = () => {
         
         // Extract unique budget plans from the budgets
         const plans = {};
-        const monthYearGroups = {};
+        // We'll initialize monthYearGroups later
         
         console.log('Processing budgets to extract plans...');
         sortedBudgets.forEach(budget => {
@@ -118,7 +118,8 @@ const Budgets = () => {
         });
         
         // Group plans by month and year
-        const monthYearGroups = {};
+        // Re-initialize the monthYearGroups object
+        monthYearGroups = {};
         Object.values(plans).forEach(plan => {
           const key = plan.monthYear;
           if (!monthYearGroups[key]) {

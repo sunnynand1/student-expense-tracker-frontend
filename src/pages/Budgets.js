@@ -118,8 +118,8 @@ const Budgets = () => {
         });
         
         // Group plans by month and year
-        // Re-initialize the monthYearGroups object
-        monthYearGroups = {};
+        // Declare and initialize the monthYearGroups object
+        const monthYearGroups = {};
         Object.values(plans).forEach(plan => {
           const key = plan.monthYear;
           if (!monthYearGroups[key]) {

@@ -20,6 +20,12 @@ const Signup = lazy(() => import('./pages/Signup'));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Expenses = lazy(() => import('./pages/Expenses'));
+const Budgets = lazy(() => import('./pages/Budgets'));
+const Reports = lazy(() => import('./pages/Reports'));
+const Calendar = lazy(() => import('./pages/Calendar'));
+const Documents = lazy(() => import('./pages/Documents'));
+const Team = lazy(() => import('./pages/Team'));
 const Profile = lazy(() => import('./pages/Profile'));
 const Settings = lazy(() => import('./pages/Settings'));
 const NotFound = lazy(() => import('./pages/NotFound'));
@@ -240,6 +246,48 @@ function App() {
                     <RouteWithTitle 
                       title="Dashboard" 
                       element={<Dashboard />} 
+                    />
+                  } />
+                  
+                  <Route path="/expenses" element={
+                    <RouteWithTitle 
+                      title="Expenses" 
+                      element={<Expenses />} 
+                    />
+                  } />
+                  
+                  <Route path="/budgets" element={
+                    <RouteWithTitle 
+                      title="Budgets" 
+                      element={<Budgets />} 
+                    />
+                  } />
+                  
+                  <Route path="/reports" element={
+                    <RouteWithTitle 
+                      title="Reports" 
+                      element={<Reports />} 
+                    />
+                  } />
+                  
+                  <Route path="/calendar" element={
+                    <RouteWithTitle 
+                      title="Calendar" 
+                      element={<Calendar />} 
+                    />
+                  } />
+                  
+                  <Route path="/documents" element={
+                    <RouteWithTitle 
+                      title="Documents" 
+                      element={<Documents />} 
+                    />
+                  } />
+                  
+                  <Route path="/team" element={
+                    <RouteWithTitle 
+                      title="Team" 
+                      element={<Team />} 
                     />
                   } />
                   

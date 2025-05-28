@@ -1,8 +1,16 @@
 import axios from 'axios';
 import { toast } from 'react-toastify';
 
-// Use environment variable or default to relative path (proxy handles the base URL in development)
-const API_URL = "https://student-expense-tracker-backend.onrender.com/api";
+// Use environment variable or default to local development server
+// In development, connect to the local backend server
+// In production, use the remote server
+const isDevelopment = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
+const API_URL = isDevelopment
+  ? 'http://localhost:5000/api'
+  : 'https://student-expense-tracker-backend.onrender.com/api';
+
+console.log(`Using API URL: ${API_URL} (${isDevelopment ? 'development' : 'production'} mode)`);
+
 
 // Navigation will be handled by React Router's useNavigate hook
 let navigate = null;
@@ -36,6 +44,7 @@ const api = axios.create({
     'Content-Type': 'application/json',
     'Accept': 'application/json',
     'X-Requested-With': 'XMLHttpRequest' // Helps some frameworks identify AJAX requests
+    // Note: 'Access-Control-Allow-Origin' should be set by the server, not the client
   },
   timeout: 10000, // 10 seconds timeout
   xsrfCookieName: 'XSRF-TOKEN',
@@ -45,6 +54,7 @@ const api = axios.create({
 // Handle network errors
 const handleNetworkError = (error) => {
   if (error.message === 'Network Error') {
+    toast.error('Unable to connect to the server. Please check your connection and try again.');
     return Promise.reject(new Error('Unable to connect to the server. Please check your connection and try again.'));
   }
   return Promise.reject(error);
@@ -104,8 +114,6 @@ api.interceptors.request.use(
     // Ensure credentials are included for all requests
     config.withCredentials = true;
     
-    return config;
-
     // Add timestamp to prevent caching
     if (config.method === 'get') {
       config.params = {
@@ -169,13 +177,18 @@ api.interceptors.response.use(
         // Get current token to send with refresh request
         const currentToken = getAuthToken();
         
+        if (!currentToken) {
+          console.warn('No token available for refresh, forcing logout');
+          forceLogout();
+          return Promise.reject(new Error('Authentication failed'));
+        }
+        
         console.log('Attempting to refresh token with current token:', currentToken ? `${currentToken.substring(0, 10)}...` : 'none');
         
-        // Try to refresh the token, sending the current token in multiple ways
-        const response = await api.post('/auth/refresh-token', { token: currentToken }, {
+        // Try to refresh the token, sending the current token in the Authorization header
+        const response = await axios.post(`${API_URL}/auth/refresh-token`, {}, {
           headers: {
-            'Authorization': `Bearer ${currentToken}`,
-            'x-auth-token': currentToken
+            'Authorization': `Bearer ${currentToken}`
           },
           withCredentials: true // Ensure cookies are sent
         });
@@ -199,6 +212,7 @@ api.interceptors.response.use(
       } catch (refreshError) {
         console.error('Failed to refresh token:', refreshError);
         forceLogout();
+        toast.error('Your session has expired. Please login again.');
         return Promise.reject(refreshError);
       }
     }
@@ -218,6 +232,17 @@ api.interceptors.response.use(
       if (error.response.status === 401) {
         console.log('Authentication failed, forcing logout...');
         forceLogout();
+        toast.error('Your session has expired. Please login again.');
+      } else if (error.response.status === 403) {
+        toast.error('You do not have permission to perform this action.');
+      } else if (error.response.status === 404) {
+        toast.error('The requested resource was not found.');
+      } else if (error.response.status >= 500) {
+        toast.error('Server error. Please try again later.');
+      } else {
+        // Show error message from server if available
+        const errorMessage = error.response.data?.message || `Request failed with status ${error.response.status}`;
+        toast.error(errorMessage);
       }
       
       return Promise.reject(error.response.data || new Error(`Request failed with status ${error.response.status}`));
@@ -233,6 +258,7 @@ api.interceptors.response.use(
           withCredentials: error.config?.withCredentials
         }
       });
+      toast.error('Unable to connect to the server. Please check your internet connection and try again.');
       return Promise.reject(new Error('Unable to connect to the server. Please check your internet connection and try again.'));
     } else {
       // Something happened in setting up the request that triggered an Error
@@ -241,6 +267,7 @@ api.interceptors.response.use(
         stack: error.stack,
         config: error.config
       });
+      toast.error('An error occurred while setting up the request.');
       return Promise.reject(new Error('An error occurred while setting up the request.'));
     }
   }
@@ -338,6 +365,47 @@ export const expensesAPI = {
   create: (expense) => api.post('/expenses', expense),
   update: (id, updates) => api.put(`/expenses/${id}`, updates),
   delete: (id) => api.delete(`/expenses/${id}`)
+};
+
+// Budgets API
+export const budgetsAPI = {
+  getAll: () => api.get('/budgets'),
+  getById: (id) => api.get(`/budgets/${id}`),
+  create: (budget) => api.post('/budgets', budget),
+  update: (id, updates) => api.put(`/budgets/${id}`, updates),
+  delete: (id) => api.delete(`/budgets/${id}`)
+};
+
+// Documents API
+export const documentsAPI = {
+  getAll: () => api.get('/documents'),
+  getById: (id) => api.get(`/documents/${id}`),
+  upload: (formData) => api.post('/documents/upload', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  }),
+  download: (id) => api.get(`/documents/${id}/download`, {
+    responseType: 'blob'
+  }),
+  delete: (id) => api.delete(`/documents/${id}`)
+};
+
+// Reports API
+export const reportsAPI = {
+  getReport: (startDate, endDate) => api.get('/reports', {
+    params: { startDate, endDate }
+  })
+};
+
+// Team API
+export const teamAPI = {
+  getAll: () => api.get('/team'),
+  getById: (id) => api.get(`/team/${id}`),
+  invite: (memberData) => api.post('/team/invite', memberData),
+  update: (id, updates) => api.put(`/team/${id}`, updates),
+  delete: (id) => api.delete(`/team/${id}`),
+  acceptInvite: (token) => api.get(`/team/accept/${token}`)
 };
 
 // Export the API instance and other utilities

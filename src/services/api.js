@@ -5,11 +5,53 @@ import { toast } from 'react-toastify';
 // In development, connect to the local backend server
 // In production, use the remote server
 const isDevelopment = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
-const API_URL = isDevelopment
-  ? 'http://localhost:5000/api'
-  : 'https://student-expense-tracker-backend.onrender.com/api';
+
+// Define multiple potential backend URLs to try
+const BACKEND_URLS = {
+  development: 'http://localhost:5000/api',
+  production: [
+    'https://student-expense-tracker-backend.onrender.com/api',
+    'https://student-expense-tracker-backend.herokuapp.com/api', // Fallback if you have a Heroku deployment
+    'https://student-expense-tracker-backend-sunnynand1.onrender.com/api' // Another possible Render URL format
+  ]
+};
+
+// Use the appropriate URL based on environment
+const API_URL = isDevelopment 
+  ? BACKEND_URLS.development 
+  : BACKEND_URLS.production[0]; // Start with the first production URL
 
 console.log(`Using API URL: ${API_URL} (${isDevelopment ? 'development' : 'production'} mode)`);
+
+// Function to test backend connectivity and switch to fallback if needed
+const testBackendConnectivity = async () => {
+  if (isDevelopment) return; // Skip in development mode
+  
+  try {
+    // Try the primary URL first
+    await axios.get(BACKEND_URLS.production[0], { timeout: 5000 });
+    console.log('Primary backend is accessible');
+  } catch (error) {
+    console.warn('Primary backend is not accessible, trying fallbacks...');
+    
+    // Try fallback URLs
+    for (let i = 1; i < BACKEND_URLS.production.length; i++) {
+      try {
+        await axios.get(BACKEND_URLS.production[i], { timeout: 5000 });
+        console.log(`Switching to fallback backend: ${BACKEND_URLS.production[i]}`);
+        // Update the API_URL to use the working fallback
+        api.defaults.baseURL = BACKEND_URLS.production[i];
+        return;
+      } catch (fallbackError) {
+        console.warn(`Fallback ${i} is also not accessible`);
+      }
+    }
+    
+    // If all backends are inaccessible, show a user-friendly message
+    console.error('All backend servers are currently unavailable');
+    toast.error('Backend services are currently unavailable. Please try again later.');
+  }
+};
 
 
 // Navigation will be handled by React Router's useNavigate hook
@@ -52,6 +94,12 @@ const api = axios.create({
   timeout: 15000, // 15 seconds timeout for better reliability
   xsrfCookieName: 'XSRF-TOKEN',
   xsrfHeaderName: 'X-XSRF-TOKEN'
+});
+
+// Test backend connectivity and switch to fallback if needed
+// We call this immediately when the application loads
+testBackendConnectivity().catch(error => {
+  console.error('Error testing backend connectivity:', error);
 });
 
 // Network error handling is now done in the response interceptor
@@ -155,6 +203,39 @@ api.interceptors.response.use(
       message: error.message,
       config: error.config
     });
+
+    // Handle network errors (like when the backend is down)
+    if (error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED' || !error.response) {
+      // Try to switch to a fallback backend URL
+      if (!isDevelopment) {
+        // Find the current URL index
+        const currentUrl = error.config?.baseURL || API_URL;
+        const currentIndex = BACKEND_URLS.production.indexOf(currentUrl);
+        
+        // If we have more fallbacks to try
+        if (currentIndex < BACKEND_URLS.production.length - 1) {
+          const nextUrl = BACKEND_URLS.production[currentIndex + 1];
+          console.log(`Switching to fallback backend: ${nextUrl}`);
+          
+          // Update the API base URL
+          api.defaults.baseURL = nextUrl;
+          
+          // Retry the request with the new URL
+          if (error.config) {
+            error.config.baseURL = nextUrl;
+            return api(error.config);
+          }
+        } else {
+          // We've tried all backends
+          toast.error('Backend services are currently unavailable. Please try again later.');
+        }
+      } else {
+        // In development, just show a message
+        toast.error('Cannot connect to the backend server. Make sure your local backend is running.');
+      }
+      
+      return Promise.reject(error);
+    }
 
     const originalRequest = error.config;
     

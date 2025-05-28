@@ -43,10 +43,13 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
-    'X-Requested-With': 'XMLHttpRequest' // Helps some frameworks identify AJAX requests
-    // Note: 'Access-Control-Allow-Origin' should be set by the server, not the client
+    'X-Requested-With': 'XMLHttpRequest', // Helps some frameworks identify AJAX requests
+    // In development, we need to be more permissive with CORS
+    'Access-Control-Allow-Origin': isDevelopment ? '*' : undefined,
+    'Access-Control-Allow-Methods': 'GET,PUT,POST,DELETE,PATCH,OPTIONS',
+    'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization'
   },
-  timeout: 10000, // 10 seconds timeout
+  timeout: 15000, // 15 seconds timeout for better reliability
   xsrfCookieName: 'XSRF-TOKEN',
   xsrfHeaderName: 'X-XSRF-TOKEN'
 });
@@ -317,13 +320,63 @@ export const authAPI = {
     }
   },
   
-  register: (userData) => api.post('/auth/register', userData, {
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json'
-    },
-    withCredentials: true
-  }),
+  register: async (userData) => {
+    try {
+      console.log('Attempting registration with:', { ...userData, password: '***' });
+      
+      // Add additional headers to help with CORS issues
+      const response = await api.post('/auth/register', userData, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Access-Control-Allow-Origin': isDevelopment ? '*' : undefined,
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Accept, Authorization'
+        },
+        withCredentials: true,
+        validateStatus: (status) => status < 500 // Don't throw for 4xx errors
+      });
+      
+      console.log('Registration response:', {
+        status: response.status,
+        statusText: response.statusText,
+        data: response.data
+      });
+      
+      // If we get a successful response
+      if (response.status >= 200 && response.status < 300) {
+        toast.success('Account created successfully!');
+        return response;
+      }
+      
+      // For error responses, create a proper error object with detailed information
+      const error = new Error(response.data?.message || 'Registration failed');
+      error.response = response;
+      error.status = response.status;
+      if (response.data?.errors) {
+        error.fieldErrors = response.data.errors;
+      }
+      throw error;
+    } catch (error) {
+      console.error('Registration error details:', {
+        name: error.name,
+        message: error.message,
+        status: error.response?.status,
+        responseData: error.response?.data,
+        stack: error.stack
+      });
+      
+      // If it's an Axios error, extract the useful information
+      if (error.isAxiosError) {
+        const apiError = new Error(error.response?.data?.message || error.message || 'Registration failed');
+        apiError.response = error.response;
+        apiError.status = error.response?.status;
+        throw apiError;
+      }
+      
+      throw error;
+    }
+  },
   
   getMe: async () => {
     // Get current token

@@ -67,6 +67,9 @@ const Budgets = () => {
         
         // Extract unique budget plans from the budgets
         const plans = {};
+        const monthYearGroups = {};
+        
+        console.log('Processing budgets to extract plans...');
         sortedBudgets.forEach(budget => {
           if (budget.planId && budget.planName) {
             if (!plans[budget.planId]) {
@@ -98,7 +101,10 @@ const Budgets = () => {
                 budgets: []
               };
             }
+            
             plans[budget.planId].budgets.push(budget);
+          } else {
+            console.log('Found budget without plan information:', budget.id);
           }
         });
         
@@ -143,16 +149,37 @@ const Budgets = () => {
           return monthOrder[a.month] - monthOrder[b.month];
         });
         
+        console.log(`Organized ${Object.keys(plans).length} budget plans into ${sortedMonthYearGroups.length} monthly groups`);
         setBudgetPlans(Object.values(plans));
         setMonthlyBudgetGroups(sortedMonthYearGroups);
       } else {
-        setError('Failed to fetch budgets');
-        toast.error('Failed to fetch budgets');
+        const errorMessage = response.data?.message || 'Failed to fetch budgets';
+        console.error('API returned error:', errorMessage);
+        setError(errorMessage);
+        toast.error(errorMessage);
       }
     } catch (err) {
       console.error('Error fetching budgets:', err);
-      setError('Error fetching budgets. Please try again.');
-      toast.error('Error fetching budgets. Please try again.');
+      
+      // More specific error messages based on error type
+      let errorMessage = 'Error fetching budgets. Please try again.';
+      
+      if (err.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        const statusCode = err.response.status;
+        const serverMessage = err.response.data?.message || err.response.statusText;
+        
+        console.error(`Server responded with status ${statusCode}:`, serverMessage);
+        errorMessage = `Server error (${statusCode}): ${serverMessage}`;
+      } else if (err.request) {
+        // The request was made but no response was received
+        console.error('No response received from server');
+        errorMessage = 'No response from server. Please check your connection.';
+      }
+      
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }

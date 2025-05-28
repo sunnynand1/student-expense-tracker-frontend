@@ -212,40 +212,76 @@ const Budgets = () => {
   // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Validate form data
+    if (!formData.name || !formData.amount || !formData.category) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+    
+    // Convert amount to number and validate
+    const amount = parseFloat(formData.amount);
+    if (isNaN(amount) || amount <= 0) {
+      toast.error('Please enter a valid amount greater than 0');
+      return;
+    }
+    
+    // Prepare the budget data
+    const budgetData = {
+      ...formData,
+      amount: amount,
+      // Add user ID and timestamps if needed by the backend
+      userId: JSON.parse(localStorage.getItem('user'))?.id,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    
+    // If name is empty or matches category name exactly, create a more descriptive name
+    const categoryName = getCategoryName(formData.category);
+    const periodName = getPeriodName(formData.period);
+    if (!budgetData.name.trim() || budgetData.name === categoryName) {
+      budgetData.name = `${categoryName} Budget (${periodName})`;
+    }
+    
     try {
-      // Ensure budget name is distinct from category name
-      const categoryName = getCategoryName(formData.category);
-      const periodName = getPeriodName(formData.period);
-      
-      // If name is empty or matches category name exactly, create a more descriptive name
-      if (!formData.name.trim() || formData.name === categoryName) {
-        formData.name = `${categoryName} Budget (${periodName})`;
-      }
+      setLoading(true);
       
       if (editingId) {
         // Update existing budget
-        const response = await budgetsAPI.update(editingId, formData);
-        if (response.data.success) {
+        const response = await budgetsAPI.update(editingId, budgetData);
+        if (response.data && response.data.success) {
           toast.success('Budget updated successfully');
-          fetchBudgets();
-          resetForm();
         } else {
-          toast.error('Failed to update budget');
+          throw new Error(response.data?.message || 'Failed to update budget');
         }
       } else {
         // Create new budget
-        const response = await budgetsAPI.create(formData);
-        if (response.data.success) {
+        const response = await budgetsAPI.create(budgetData);
+        if (response.data && response.data.success) {
           toast.success('Budget created successfully');
-          fetchBudgets();
-          resetForm();
         } else {
-          toast.error('Failed to create budget');
+          throw new Error(response.data?.message || 'Failed to create budget');
         }
       }
-    } catch (err) {
-      console.error('Error submitting budget:', err);
-      toast.error('Error submitting budget. Please try again.');
+      
+      // Reset form and fetch updated budgets
+      setFormData({
+        name: '',
+        amount: '',
+        category: 'food',
+        period: 'monthly'
+      });
+      setEditingId(null);
+      setShowForm(false);
+      await fetchBudgets();
+    } catch (error) {
+      console.error('Error saving budget:', error);
+      const errorMessage = error.response?.data?.message || 
+                         error.message || 
+                         'An error occurred while saving the budget';
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 

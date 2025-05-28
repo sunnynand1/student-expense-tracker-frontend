@@ -494,11 +494,51 @@ export const expensesAPI = {
 
 // Budgets API
 export const budgetsAPI = {
-  getAll: () => api.get('/budgets'),
-  getById: (id) => api.get(`/budgets/${id}`),
-  create: (budget) => api.post('/budgets', budget),
-  update: (id, updates) => api.put(`/budgets/${id}`, updates),
-  delete: (id) => api.delete(`/budgets/${id}`)
+  getAll: async () => {
+    try {
+      const response = await api.get('/budgets');
+      return response;
+    } catch (error) {
+      console.error('Error fetching budgets:', error);
+      throw error;
+    }
+  },
+  getById: async (id) => {
+    try {
+      const response = await api.get(`/budgets/${id}`);
+      return response;
+    } catch (error) {
+      console.error(`Error fetching budget ${id}:`, error);
+      throw error;
+    }
+  },
+  create: async (budget) => {
+    try {
+      const response = await api.post('/budgets', budget);
+      return response;
+    } catch (error) {
+      console.error('Error creating budget:', error);
+      throw error;
+    }
+  },
+  update: async (id, updates) => {
+    try {
+      const response = await api.put(`/budgets/${id}`, updates);
+      return response;
+    } catch (error) {
+      console.error(`Error updating budget ${id}:`, error);
+      throw error;
+    }
+  },
+  delete: async (id) => {
+    try {
+      const response = await api.delete(`/budgets/${id}`);
+      return response;
+    } catch (error) {
+      console.error(`Error deleting budget ${id}:`, error);
+      throw error;
+    }
+  }
 };
 
 // Documents API

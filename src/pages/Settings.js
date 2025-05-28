@@ -36,31 +36,68 @@ export default function Settings() {
   useEffect(() => {
     const currentNav = navigation.find(nav => nav.href === location.pathname);
     setCurrentTab(currentNav?.name || 'Profile');
+    
+    // Load saved settings from localStorage
+    const savedCurrency = localStorage.getItem('defaultCurrency');
+    if (savedCurrency) {
+      setDefaultCurrency(savedCurrency);
+    }
+    
+    const savedCategories = localStorage.getItem('defaultCategories');
+    if (savedCategories) {
+      try {
+        setDefaultCategories(JSON.parse(savedCategories));
+      } catch (error) {
+        console.error('Error parsing saved categories:', error);
+      }
+    }
+    
+    const savedReminderFrequency = localStorage.getItem('reminderFrequency');
+    if (savedReminderFrequency) {
+      setReminderFrequency(savedReminderFrequency);
+    }
+    
+    const savedBudgetThreshold = localStorage.getItem('budgetThreshold');
+    if (savedBudgetThreshold) {
+      setBudgetThreshold(savedBudgetThreshold);
+    }
   }, [location]);
 
   const handleCurrencyChange = (e) => {
-    setDefaultCurrency(e.target.value);
+    const newCurrency = e.target.value;
+    setDefaultCurrency(newCurrency);
+    localStorage.setItem('defaultCurrency', newCurrency);
     toast.success('Default currency updated successfully');
   };
 
   const handleCategoryToggle = (category) => {
-    setDefaultCategories(prev => ({
-      ...prev,
-      [category]: {
-        ...prev[category],
-        enabled: !prev[category].enabled
-      }
-    }));
+    setDefaultCategories(prev => {
+      const updatedCategories = {
+        ...prev,
+        [category]: {
+          ...prev[category],
+          enabled: !prev[category].enabled
+        }
+      };
+      // Save to localStorage
+      localStorage.setItem('defaultCategories', JSON.stringify(updatedCategories));
+      return updatedCategories;
+    });
   };
 
   const handlePercentageChange = (category, value) => {
-    setDefaultCategories(prev => ({
-      ...prev,
-      [category]: {
-        ...prev[category],
-        percentage: parseInt(value, 10) || 0
-      }
-    }));
+    setDefaultCategories(prev => {
+      const updatedCategories = {
+        ...prev,
+        [category]: {
+          ...prev[category],
+          percentage: parseInt(value, 10) || 0
+        }
+      };
+      // Save to localStorage
+      localStorage.setItem('defaultCategories', JSON.stringify(updatedCategories));
+      return updatedCategories;
+    });
   };
 
   const handleSaveBudgetSettings = () => {
@@ -69,11 +106,15 @@ export default function Settings() {
   };
 
   const handleReminderFrequencyChange = (e) => {
-    setReminderFrequency(e.target.value);
+    const newFrequency = e.target.value;
+    setReminderFrequency(newFrequency);
+    localStorage.setItem('reminderFrequency', newFrequency);
   };
 
   const handleThresholdChange = (e) => {
-    setBudgetThreshold(e.target.value);
+    const newThreshold = e.target.value;
+    setBudgetThreshold(newThreshold);
+    localStorage.setItem('budgetThreshold', newThreshold);
   };
 
   const renderTabContent = () => {

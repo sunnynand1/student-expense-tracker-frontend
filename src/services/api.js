@@ -1,21 +1,31 @@
 import axios from 'axios';
 import { toast } from 'react-toastify';
 
-// Determine if we're in development mode
-const isDevelopment = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
+// Set environment variables
+const ENV = process.env.NODE_ENV || 'development';
+const isDevelopment = ENV === 'development';
 
-// Set the base URL for API requests
-const API_BASE_URL = isDevelopment 
-  ? 'http://localhost:5000' // Local development
-  : 'https://student-expense-tracker-backend.onrender.com'; // Production
+// API Configuration
+const API_CONFIG = {
+  development: {
+    baseURL: 'http://localhost:5000/api',
+    withCredentials: true
+  },
+  production: {
+    baseURL: 'https://student-expense-tracker-backend.onrender.com/api',
+    withCredentials: true
+  }
+};
 
-// API endpoints will be relative to the base URL
-const API_URL = `${API_BASE_URL}/api`;
+const config = API_CONFIG[isDevelopment ? 'development' : 'production'];
 
 // Log the configuration
-console.log(`Environment: ${isDevelopment ? 'development' : 'production'}`);
-console.log(`API Base URL: ${API_BASE_URL}`);
-console.log(`API Endpoint: ${API_URL}`);
+console.group('API Configuration');
+console.log(`Environment: ${ENV}`);
+console.log('API Config:', config);
+console.groupEnd();
+
+const API_URL = config.baseURL;
 
 // Navigation will be handled by React Router's useNavigate hook
 let navigate = null;
@@ -43,8 +53,9 @@ const getAuthToken = () => {
 
 // Create axios instance with default config
 const api = axios.create({
-  baseURL: API_URL, // This will be used as the base for all requests
-  withCredentials: true, // Important for cookies, authorization headers
+  baseURL: config.baseURL,
+  withCredentials: true, // Important for cookies
+  timeout: 30000, // 30 seconds
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
@@ -53,16 +64,21 @@ const api = axios.create({
     'Pragma': 'no-cache',
     'Expires': '0'
   },
-  timeout: 30000, // 30 seconds timeout
   validateStatus: function (status) {
     // Don't reject on 4xx errors, only on 5xx errors
     return status < 500;
   },
-  // Don't use proxy in production
+  // Proxy is only used in development
   proxy: isDevelopment ? {
     host: 'localhost',
     port: 5000,
-    protocol: 'http'
+    protocol: 'http',
+    // Add proxy headers for development
+    headers: {
+      'X-Forwarded-Host': 'localhost:3000',
+      'X-Forwarded-Proto': 'http',
+      'X-Forwarded-For': '127.0.0.1'
+    }
   } : false
 });
 

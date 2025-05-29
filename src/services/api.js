@@ -1,16 +1,21 @@
 import axios from 'axios';
 import { toast } from 'react-toastify';
 
-// Use relative URLs in development (handled by proxy) and absolute in production
+// Determine if we're in development mode
 const isDevelopment = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
 
-// In development, we use relative URLs that will be proxied to the backend
-// In production, use the deployed backend URL
-const API_URL = isDevelopment 
-  ? 'http://localhost:5000/api' // Direct connection to local backend
-  : 'https://student-expense-tracker-backend.onrender.com/api'; // Render backend URL
+// Set the base URL for API requests
+const API_BASE_URL = isDevelopment 
+  ? 'http://localhost:5000' // Local development
+  : 'https://student-expense-tracker-backend.onrender.com'; // Production
 
-console.log(`Using API URL: ${API_URL} (${isDevelopment ? 'development' : 'production'} mode)`);
+// API endpoints will be relative to the base URL
+const API_URL = `${API_BASE_URL}/api`;
+
+// Log the configuration
+console.log(`Environment: ${isDevelopment ? 'development' : 'production'}`);
+console.log(`API Base URL: ${API_BASE_URL}`);
+console.log(`API Endpoint: ${API_URL}`);
 
 // Navigation will be handled by React Router's useNavigate hook
 let navigate = null;
@@ -38,25 +43,80 @@ const getAuthToken = () => {
 
 // Create axios instance with default config
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: API_URL, // This will be used as the base for all requests
   withCredentials: true, // Important for cookies, authorization headers
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
     'X-Requested-With': 'XMLHttpRequest',
-    // Remove CORS headers from frontend - they should only be in the response
     'Cache-Control': 'no-cache, no-store, must-revalidate',
     'Pragma': 'no-cache',
     'Expires': '0'
   },
-  timeout: 20000, // 20 seconds timeout
-  xsrfCookieName: 'XSRF-TOKEN',
-  xsrfHeaderName: 'X-XSRF-TOKEN',
+  timeout: 30000, // 30 seconds timeout
   validateStatus: function (status) {
-    // Consider all status codes less than 500 as success to handle custom error responses
+    // Don't reject on 4xx errors, only on 5xx errors
     return status < 500;
-  }
+  },
+  // Don't use proxy in production
+  proxy: isDevelopment ? {
+    host: 'localhost',
+    port: 5000,
+    protocol: 'http'
+  } : false
 });
+
+// Add a request interceptor to log requests
+api.interceptors.request.use(
+  (config) => {
+    console.log('Request:', {
+      url: config.url,
+      method: config.method,
+      headers: config.headers,
+      data: config.data,
+      withCredentials: config.withCredentials
+    });
+    return config;
+  },
+  (error) => {
+    console.error('Request Error:', error);
+    return Promise.reject(error);
+  }
+);
+
+// Add a response interceptor to log responses
+api.interceptors.response.use(
+  (response) => {
+    console.log('Response:', {
+      status: response.status,
+      statusText: response.statusText,
+      data: response.data,
+      headers: response.headers
+    });
+    return response;
+  },
+  (error) => {
+    console.error('Response Error:', {
+      message: error.message,
+      code: error.code,
+      config: error.config ? {
+        url: error.config.url,
+        method: error.config.method,
+        headers: error.config.headers,
+        data: error.config.data,
+        withCredentials: error.config.withCredentials
+      } : 'No config',
+      response: error.response ? {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        headers: error.response.headers,
+        data: error.response.data
+      } : 'No response',
+      stack: error.stack
+    });
+    return Promise.reject(error);
+  }
+);
 
 // Network error handling is done in the response interceptor
 
@@ -305,13 +365,20 @@ export const authAPI = {
   login: async (email, password) => {
     try {
       console.log('Attempting login with:', { email });
+      
+      // Log the API URL being used
+      console.log('API Base URL:', api.defaults.baseURL);
+      
       const response = await api.post('/auth/login', { email, password }, {
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json'
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
         },
         withCredentials: true,
-        validateStatus: (status) => status < 500 // Don't throw for 4xx errors
+        validateStatus: (status) => status < 500, // Don't throw for 4xx errors
+        timeout: 30000 // 30 seconds timeout for login
       });
       
       console.log('Login response:', {
@@ -336,20 +403,51 @@ export const authAPI = {
       console.error('Login error details:', {
         name: error.name,
         message: error.message,
+        code: error.code,
         status: error.response?.status,
         responseData: error.response?.data,
+        config: {
+          url: error.config?.url,
+          method: error.config?.method,
+          baseURL: error.config?.baseURL,
+          headers: error.config?.headers
+        },
+        isAxiosError: error.isAxiosError,
         stack: error.stack
       });
       
-      // If it's an Axios error, extract the useful information
-      if (error.isAxiosError) {
-        const apiError = new Error(error.response?.data?.message || error.message || 'Login failed');
-        apiError.response = error.response;
-        apiError.status = error.response?.status;
-        throw apiError;
+      // Handle network errors
+      if (error.code === 'ECONNABORTED') {
+        const timeoutError = new Error('Connection timeout. Please check your internet connection and try again.');
+        timeoutError.code = 'CONNECTION_TIMEOUT';
+        throw timeoutError;
       }
       
-      throw error;
+      if (!error.response) {
+        const networkError = new Error('Unable to connect to the server. Please check your internet connection and try again.');
+        networkError.code = 'NETWORK_ERROR';
+        throw networkError;
+      }
+      
+      // Handle specific HTTP status codes
+      if (error.response.status === 401) {
+        const authError = new Error('Invalid email or password');
+        authError.code = 'AUTH_ERROR';
+        throw authError;
+      }
+      
+      if (error.response.status === 403) {
+        const forbiddenError = new Error('Your account has been deactivated. Please contact support.');
+        forbiddenError.code = 'ACCOUNT_DEACTIVATED';
+        throw forbiddenError;
+      }
+      
+      // For other errors, use the server message or a generic one
+      const errorMessage = error.response.data?.message || 'An unexpected error occurred. Please try again.';
+      const apiError = new Error(errorMessage);
+      apiError.code = 'API_ERROR';
+      apiError.response = error.response;
+      throw apiError;
     }
   },
   

@@ -7,8 +7,8 @@ const isDevelopment = process.env.NODE_ENV === 'development' || !process.env.NOD
 // In development, we use relative URLs that will be proxied to the backend
 // In production, use the deployed backend URL
 const API_URL = isDevelopment 
-  ? '/api' // This will be proxied to http://localhost:5000/api
-  : 'https://student-expense-tracker-backend-sunnynand1.onrender.com/api';
+  ? 'http://localhost:5000/api' // Direct connection to local backend
+  : 'https://student-expense-tracker-backend.onrender.com/api'; // Render backend URL
 
 console.log(`Using API URL: ${API_URL} (${isDevelopment ? 'development' : 'production'} mode)`);
 

@@ -141,11 +141,30 @@ const Reports = () => {
     }));
   };
 
+  // State for currency
+  const [currency, setCurrency] = useState('USD');
+
+  // Set currency from localStorage on component mount
+  useEffect(() => {
+    const savedCurrency = localStorage.getItem('defaultCurrency') || 'USD';
+    setCurrency(savedCurrency);
+    
+    // Listen for storage events to update currency when changed in other tabs
+    const handleStorageChange = (e) => {
+      if (e.key === 'defaultCurrency') {
+        setCurrency(e.newValue || 'USD');
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
   // Format currency
   const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat(undefined, {
       style: 'currency',
-      currency: 'USD'
+      currency: currency
     }).format(amount);
   };
 

@@ -24,6 +24,18 @@ const periods = [
 ];
 
 const Budgets = () => {
+  // Helper function to get category name by ID
+  const getCategoryName = (categoryId) => {
+    const category = categories.find(cat => cat.id === categoryId);
+    return category ? category.name : 'Uncategorized';
+  };
+
+  // Helper function to get period name by ID
+  const getPeriodName = (periodId) => {
+    const period = periods.find(p => p.id === periodId);
+    return period ? period.name : 'Monthly';
+  };
+
   const [budgets, setBudgets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -45,138 +57,135 @@ const Budgets = () => {
   const [expandedPlans, setExpandedPlans] = useState({});
   const [expandedMonths, setExpandedMonths] = useState({});
 
-
-
   // Fetch budgets
   const fetchBudgets = async () => {
     setLoading(true);
+    setError(null);
+    
     try {
       const response = await budgetsAPI.getAll();
-      if (response.data.success) {
-        const budgetsData = response.data.data;
+      const budgetsData = response.data.data || [];
+      
+      // Sort all budgets by name for consistent display
+      const sortedBudgets = [...budgetsData].sort((a, b) => {
+        // First sort by category name
+        const categoryA = categories.find(c => c.id === a.category)?.name || a.category;
+        const categoryB = categories.find(c => c.id === b.category)?.name || b.category;
+        return categoryA.localeCompare(categoryB);
+      });
+      
+      setBudgets(sortedBudgets);
+      
+      // Extract unique budget plans from the budgets
+      const plans = {};
+      
+      console.log(`Processing ${sortedBudgets.length} budgets to extract plans...`);
+      sortedBudgets.forEach(budget => {
+        if (budget.planId && budget.planName) {
+          if (!plans[budget.planId]) {
+            // Extract month information from the plan name if possible
+            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                              'July', 'August', 'September', 'October', 'November', 'December'];
+            
+            // Try to determine the month from the plan name
+            let planMonth = 'Other';
+            for (const month of monthNames) {
+              if (budget.planName.includes(month)) {
+                planMonth = month;
+                break;
+              }
+            }
+            
+            // Extract year if present (4 consecutive digits)
+            const yearMatch = budget.planName.match(/\b(20\d{2})\b/);
+            const planYear = yearMatch ? yearMatch[1] : new Date().getFullYear().toString();
+            
+            plans[budget.planId] = {
+              id: budget.planId,
+              name: budget.planName,
+              month: planMonth,
+              year: planYear,
+              monthYear: `${planMonth} ${planYear}`,
+              totalAmount: 0, // Will be calculated below
+              budgets: []
+            };
+          }
+          
+          plans[budget.planId].budgets.push(budget);
+        } else {
+          console.log('Found budget without plan information:', budget.id);
+        }
+      });
+      
+      // Calculate total amounts and sort budgets within each plan by category name
+      Object.values(plans).forEach(plan => {
+        plan.totalAmount = plan.budgets.reduce((sum, b) => sum + parseFloat(b.amount || 0), 0);
         
-        // Sort all budgets by name for consistent display
-        const sortedBudgets = [...budgetsData].sort((a, b) => {
-          // First sort by category name
+        plan.budgets.sort((a, b) => {
           const categoryA = categories.find(c => c.id === a.category)?.name || a.category;
           const categoryB = categories.find(c => c.id === b.category)?.name || b.category;
           return categoryA.localeCompare(categoryB);
         });
-        
-        setBudgets(sortedBudgets);
-        
-        // Extract unique budget plans from the budgets
-        const plans = {};
-        // We'll initialize monthYearGroups later
-        
-        console.log('Processing budgets to extract plans...');
-        sortedBudgets.forEach(budget => {
-          if (budget.planId && budget.planName) {
-            if (!plans[budget.planId]) {
-              // Extract month information from the plan name if possible
-              const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-              
-              // Try to determine the month from the plan name
-              let planMonth = 'Other';
-              for (const month of monthNames) {
-                if (budget.planName.includes(month)) {
-                  planMonth = month;
-                  break;
-                }
-              }
-              
-              // Extract year if present (4 consecutive digits)
-              const yearMatch = budget.planName.match(/\b(20\d{2})\b/);
-              const planYear = yearMatch ? yearMatch[1] : new Date().getFullYear().toString();
-              
-              plans[budget.planId] = {
-                id: budget.planId,
-                name: budget.planName,
-                month: planMonth,
-                year: planYear,
-                monthYear: `${planMonth} ${planYear}`,
-                totalAmount: sortedBudgets
-                  .filter(b => b.planId === budget.planId)
-                  .reduce((sum, b) => sum + parseFloat(b.amount), 0),
-                budgets: []
-              };
-            }
-            
-            plans[budget.planId].budgets.push(budget);
-          } else {
-            console.log('Found budget without plan information:', budget.id);
-          }
-        });
-        
-        // Sort budgets within each plan by category name
-        Object.values(plans).forEach(plan => {
-          plan.budgets.sort((a, b) => {
-            const categoryA = categories.find(c => c.id === a.category)?.name || a.category;
-            const categoryB = categories.find(c => c.id === b.category)?.name || b.category;
-            return categoryA.localeCompare(categoryB);
-          });
-        });
-        
-        // Group plans by month and year
-        // Declare and initialize the monthYearGroups object
-        const monthYearGroups = {};
-        Object.values(plans).forEach(plan => {
-          const key = plan.monthYear;
-          if (!monthYearGroups[key]) {
-            monthYearGroups[key] = {
-              monthYear: key,
-              month: plan.month,
-              year: plan.year,
-              plans: [],
-              totalAmount: 0
-            };
-          }
-          monthYearGroups[key].plans.push(plan);
-          monthYearGroups[key].totalAmount += plan.totalAmount;
-        });
-        
-        // Sort month-year groups chronologically
-        const monthOrder = {
-          'January': 0, 'February': 1, 'March': 2, 'April': 3, 'May': 4, 'June': 5,
-          'July': 6, 'August': 7, 'September': 8, 'October': 9, 'November': 10, 'December': 11, 'Other': 12
-        };
-        
-        const sortedMonthYearGroups = Object.values(monthYearGroups).sort((a, b) => {
-          // Sort by year first (descending)
-          if (a.year !== b.year) {
-            return parseInt(b.year) - parseInt(a.year);
-          }
-          // Then by month (chronological within the year)
-          return monthOrder[a.month] - monthOrder[b.month];
-        });
-        
-        console.log(`Organized ${Object.keys(plans).length} budget plans into ${sortedMonthYearGroups.length} monthly groups`);
-        setBudgetPlans(Object.values(plans));
-        setMonthlyBudgetGroups(sortedMonthYearGroups);
-      } else {
-        const errorMessage = response.data?.message || 'Failed to fetch budgets';
-        console.error('API returned error:', errorMessage);
-        setError(errorMessage);
-        toast.error(errorMessage);
-      }
-    } catch (err) {
-      console.error('Error fetching budgets:', err);
+      });
+      
+      // Group plans by month and year
+      const monthYearGroups = {};
+      Object.values(plans).forEach(plan => {
+        const key = plan.monthYear;
+        if (!monthYearGroups[key]) {
+          monthYearGroups[key] = {
+            monthYear: key,
+            month: plan.month,
+            year: plan.year,
+            plans: [],
+            totalAmount: 0
+          };
+        }
+        monthYearGroups[key].plans.push(plan);
+        monthYearGroups[key].totalAmount += plan.totalAmount;
+      });
+      
+      // Sort month-year groups chronologically
+      const monthOrder = {
+        'January': 0, 'February': 1, 'March': 2, 'April': 3, 'May': 4, 'June': 5,
+        'July': 6, 'August': 7, 'September': 8, 'October': 9, 'November': 10, 'December': 11, 'Other': 12
+      };
+      
+      const sortedMonthYearGroups = Object.values(monthYearGroups).sort((a, b) => {
+        // Sort by year first (descending)
+        if (a.year !== b.year) {
+          return parseInt(b.year) - parseInt(a.year);
+        }
+        // Then by month (chronological within the year)
+        return monthOrder[a.month] - monthOrder[b.month];
+      });
+      
+      console.log(`Organized ${Object.keys(plans).length} budget plans into ${sortedMonthYearGroups.length} monthly groups`);
+      setBudgetPlans(Object.values(plans));
+      setMonthlyBudgetGroups(sortedMonthYearGroups);
+      
+    } catch (error) {
+      console.error('Error fetching budgets:', error);
       
       // More specific error messages based on error type
       let errorMessage = 'Error fetching budgets. Please try again.';
       
-      if (err.response) {
+      if (error.response) {
         // The request was made and the server responded with a status code
         // that falls out of the range of 2xx
-        const statusCode = err.response.status;
-        const serverMessage = err.response.data?.message || err.response.statusText;
+        const statusCode = error.response.status;
+        const serverMessage = error.response.data?.message || error.response.statusText;
         
         console.error(`Server responded with status ${statusCode}:`, serverMessage);
         errorMessage = `Server error (${statusCode}): ${serverMessage}`;
-      } else if (err.request) {
+      } else if (error.request) {
         // The request was made but no response was received
         console.error('No response received from server');
-        errorMessage = 'No response from server. Please check your connection.';
+        errorMessage = 'No response from server. Please check your connection and make sure the backend is running.';
+      } else {
+        // Something happened in setting up the request
+        console.error('Error setting up request:', error.message);
+        errorMessage = `Request error: ${error.message}`;
       }
       
       setError(errorMessage);
@@ -226,59 +235,42 @@ const Budgets = () => {
       return;
     }
     
-    // Prepare the budget data
-    const budgetData = {
-      ...formData,
-      amount: amount,
-      // Add user ID and timestamps if needed by the backend
-      userId: JSON.parse(localStorage.getItem('user'))?.id,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-    
-    // If name is empty or matches category name exactly, create a more descriptive name
-    const categoryName = getCategoryName(formData.category);
-    const periodName = getPeriodName(formData.period);
-    if (!budgetData.name.trim() || budgetData.name === categoryName) {
-      budgetData.name = `${categoryName} Budget (${periodName})`;
-    }
-    
     try {
       setLoading(true);
       
+      // Prepare the budget data
+      const budgetData = {
+        name: formData.name.trim(),
+        amount: amount,
+        category: formData.category,
+        period: formData.period,
+        planId: selectedPlanId || null,
+        planName: selectedPlanId ? `Budget Plan ${new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}` : null
+      };
+      
+      // If name is empty or matches category name exactly, create a more descriptive name
+      const categoryName = getCategoryName(formData.category);
+      const periodName = getPeriodName(formData.period);
+      if (!budgetData.name || budgetData.name === categoryName) {
+        budgetData.name = `${categoryName} (${periodName})`;
+      }
+      
       if (editingId) {
         // Update existing budget
-        const response = await budgetsAPI.update(editingId, budgetData);
-        if (response.data && response.data.success) {
-          toast.success('Budget updated successfully');
-        } else {
-          throw new Error(response.data?.message || 'Failed to update budget');
-        }
+        await budgetsAPI.update(editingId, budgetData);
+        toast.success('Budget updated successfully');
       } else {
         // Create new budget
-        const response = await budgetsAPI.create(budgetData);
-        if (response.data && response.data.success) {
-          toast.success('Budget created successfully');
-        } else {
-          throw new Error(response.data?.message || 'Failed to create budget');
-        }
+        await budgetsAPI.create(budgetData);
+        toast.success('Budget created successfully');
       }
       
       // Reset form and fetch updated budgets
-      setFormData({
-        name: '',
-        amount: '',
-        category: 'food',
-        period: 'monthly'
-      });
-      setEditingId(null);
-      setShowForm(false);
+      resetForm();
       await fetchBudgets();
     } catch (error) {
       console.error('Error saving budget:', error);
-      const errorMessage = error.response?.data?.message || 
-                         error.message || 
-                         'An error occurred while saving the budget';
+      const errorMessage = error.message || 'An error occurred while saving the budget';
       toast.error(errorMessage);
     } finally {
       setLoading(false);
@@ -313,16 +305,16 @@ const Budgets = () => {
   const handleDelete = async (id) => {
     if (window.confirm('Are you sure you want to delete this budget?')) {
       try {
-        const response = await budgetsAPI.delete(id);
-        if (response.data.success) {
-          toast.success('Budget deleted successfully');
-          fetchBudgets();
-        } else {
-          toast.error(response.data.message || 'Failed to delete budget');
-        }
-      } catch (err) {
-        console.error('Error deleting budget:', err);
-        toast.error('Error deleting budget. Please try again.');
+        setLoading(true);
+        await budgetsAPI.delete(id);
+        toast.success('Budget deleted successfully');
+        await fetchBudgets();
+      } catch (error) {
+        console.error('Error deleting budget:', error);
+        const errorMessage = error.message || 'Error deleting budget. Please try again.';
+        toast.error(errorMessage);
+      } finally {
+        setLoading(false);
       }
     }
   };
@@ -331,26 +323,73 @@ const Budgets = () => {
   const handleDeleteAll = async () => {
     if (window.confirm('Are you sure you want to delete ALL budgets? This action cannot be undone.')) {
       try {
+        setLoading(true);
+        
+        // Get all budgets first
+        const response = await budgetsAPI.getAll();
+        const allBudgets = response.data.data || [];
+        
+        if (allBudgets.length === 0) {
+          toast.info('No budgets to delete');
+          return;
+        }
+        
         // Create an array of promises for each budget deletion
-        const deletePromises = budgets.map(budget => budgetsAPI.delete(budget.id));
+        const deletePromises = allBudgets.map(budget => 
+          budgetsAPI.delete(budget.id).catch(err => {
+            console.error(`Error deleting budget ${budget.id}:`, err);
+            return { success: false, id: budget.id, error: err.message };
+          })
+        );
         
         // Wait for all deletions to complete
-        await Promise.all(deletePromises);
+        const results = await Promise.all(deletePromises);
         
-        toast.success('All budgets deleted successfully');
-        fetchBudgets();
-      } catch (err) {
-        console.error('Error deleting all budgets:', err);
-        toast.error('Error deleting all budgets. Please try again.');
+        // Check if any deletions failed
+        const failedDeletions = results.filter(result => !result?.success);
+        
+        if (failedDeletions.length === 0) {
+          toast.success('All budgets deleted successfully');
+        } else {
+          console.error('Some budgets could not be deleted:', failedDeletions);
+          toast.warning(`Deleted ${allBudgets.length - failedDeletions} budgets, but failed to delete ${failedDeletions.length}`);
+        }
+        
+        await fetchBudgets();
+      } catch (error) {
+        console.error('Error deleting all budgets:', error);
+        const errorMessage = error.message || 'Error deleting all budgets. Please try again.';
+        toast.error(errorMessage);
+      } finally {
+        setLoading(false);
       }
     }
   };
 
+  // State for currency
+  const [currency, setCurrency] = useState('USD');
+
+  // Set currency from localStorage on component mount
+  useEffect(() => {
+    const savedCurrency = localStorage.getItem('defaultCurrency') || 'USD';
+    setCurrency(savedCurrency);
+    
+    // Listen for storage events to update currency when changed in other tabs
+    const handleStorageChange = (e) => {
+      if (e.key === 'defaultCurrency') {
+        setCurrency(e.newValue || 'USD');
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
   // Format currency
   const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat(undefined, {
       style: 'currency',
-      currency: 'USD'
+      currency: currency
     }).format(amount);
   };
 
@@ -464,18 +503,6 @@ const Budgets = () => {
     }
   };
 
-  // Get category name
-  const getCategoryName = (categoryId) => {
-    const category = categories.find(c => c.id === categoryId);
-    return category ? category.name : categoryId;
-  };
-
-  // Get period name
-  const getPeriodName = (periodId) => {
-    const period = periods.find(p => p.id === periodId);
-    return period ? period.name : periodId;
-  };
-  
   // Toggle plan expansion
   const togglePlanExpansion = (planId) => {
     setExpandedPlans(prev => ({
@@ -569,7 +596,12 @@ const Budgets = () => {
             </label>
             <div className="relative rounded-lg shadow-sm">
               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <span className="text-gray-500 font-medium">$</span>
+                <span className="text-gray-500 font-medium">
+                  {new Intl.NumberFormat(undefined, { style: 'currency', currency: currency || 'USD' })
+                    .format(0)
+                    .replace(/[0-9.,]/g, '')
+                    .trim()}
+                </span>
               </div>
               <input
                 type="number"
@@ -586,7 +618,7 @@ const Budgets = () => {
               />
               <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
                 <span className="text-gray-500 font-medium" id="price-currency">
-                  USD
+                  {currency || 'USD'}
                 </span>
               </div>
             </div>

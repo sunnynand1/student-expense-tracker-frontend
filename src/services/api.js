@@ -1,58 +1,16 @@
 import axios from 'axios';
 import { toast } from 'react-toastify';
 
-// Use environment variable or default to local development server
-// In development, connect to the local backend server
-// In production, use the remote server
+// Use relative URLs in development (handled by proxy) and absolute in production
 const isDevelopment = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
 
-// Define multiple potential backend URLs to try
-const BACKEND_URLS = {
-  development: 'http://localhost:5000/api',
-  production: [
-    'https://student-expense-tracker-backend.onrender.com/api',
-    'https://student-expense-tracker-backend.herokuapp.com/api', // Fallback if you have a Heroku deployment
-    'https://student-expense-tracker-backend-sunnynand1.onrender.com/api' // Another possible Render URL format
-  ]
-};
-
-// Use the appropriate URL based on environment
+// In development, we use relative URLs that will be proxied to the backend
+// In production, use the deployed backend URL
 const API_URL = isDevelopment 
-  ? BACKEND_URLS.development 
-  : BACKEND_URLS.production[0]; // Start with the first production URL
+  ? '/api' // This will be proxied to http://localhost:5000/api
+  : 'https://student-expense-tracker-backend-sunnynand1.onrender.com/api';
 
 console.log(`Using API URL: ${API_URL} (${isDevelopment ? 'development' : 'production'} mode)`);
-
-// Function to test backend connectivity and switch to fallback if needed
-const testBackendConnectivity = async () => {
-  if (isDevelopment) return; // Skip in development mode
-  
-  try {
-    // Try the primary URL first
-    await axios.get(BACKEND_URLS.production[0], { timeout: 5000 });
-    console.log('Primary backend is accessible');
-  } catch (error) {
-    console.warn('Primary backend is not accessible, trying fallbacks...');
-    
-    // Try fallback URLs
-    for (let i = 1; i < BACKEND_URLS.production.length; i++) {
-      try {
-        await axios.get(BACKEND_URLS.production[i], { timeout: 5000 });
-        console.log(`Switching to fallback backend: ${BACKEND_URLS.production[i]}`);
-        // Update the API_URL to use the working fallback
-        api.defaults.baseURL = BACKEND_URLS.production[i];
-        return;
-      } catch (fallbackError) {
-        console.warn(`Fallback ${i} is also not accessible`);
-      }
-    }
-    
-    // If all backends are inaccessible, show a user-friendly message
-    console.error('All backend servers are currently unavailable');
-    toast.error('Backend services are currently unavailable. Please try again later.');
-  }
-};
-
 
 // Navigation will be handled by React Router's useNavigate hook
 let navigate = null;
@@ -81,37 +39,40 @@ const getAuthToken = () => {
 // Create axios instance with default config
 const api = axios.create({
   baseURL: API_URL,
-  withCredentials: true, // Important for cookies, authorization headers with HTTPS
+  withCredentials: true, // Important for cookies, authorization headers
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
-    'X-Requested-With': 'XMLHttpRequest', // Helps some frameworks identify AJAX requests
-    // In development, we need to be more permissive with CORS
-    'Access-Control-Allow-Origin': isDevelopment ? '*' : undefined,
-    'Access-Control-Allow-Methods': 'GET,PUT,POST,DELETE,PATCH,OPTIONS',
-    'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+    'X-Requested-With': 'XMLHttpRequest',
+    // Remove CORS headers from frontend - they should only be in the response
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0'
   },
-  timeout: 15000, // 15 seconds timeout for better reliability
+  timeout: 20000, // 20 seconds timeout
   xsrfCookieName: 'XSRF-TOKEN',
-  xsrfHeaderName: 'X-XSRF-TOKEN'
+  xsrfHeaderName: 'X-XSRF-TOKEN',
+  validateStatus: function (status) {
+    // Consider all status codes less than 500 as success to handle custom error responses
+    return status < 500;
+  }
 });
 
-// Test backend connectivity and switch to fallback if needed
-// We call this immediately when the application loads
-testBackendConnectivity().catch(error => {
-  console.error('Error testing backend connectivity:', error);
-});
-
-// Network error handling is now done in the response interceptor
+// Network error handling is done in the response interceptor
 
 // Helper function to handle forced logout
 const forceLogout = () => {
-  console.log('Forcing logout due to authentication failure');
+  console.log('Forcing logout...');
+  // Clear user data from localStorage
   localStorage.removeItem('user');
-  localStorage.removeItem('lastLogin');
+  localStorage.removeItem('token');
   
-  // Redirect to login if we have access to navigate
+  // Clear any auth headers
+  delete api.defaults.headers.common['Authorization'];
+  
+  // If we have a navigate function, redirect to login
   if (navigate) {
+    navigate('/login');
     navigate('/login', { 
       state: { 
         from: window.location.pathname,
@@ -128,6 +89,18 @@ const forceLogout = () => {
 // Single request interceptor to handle all requests
 api.interceptors.request.use(
   (config) => {
+    // Add auth token to every request if available
+    const token = getAuthToken();
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    // Add cache control headers for GET requests
+    if (config.method === 'get') {
+      config.headers['Cache-Control'] = 'no-cache';
+      config.headers['Pragma'] = 'no-cache';
+    }
+    
     console.log('[API Request]', {
       url: config.url,
       method: config.method,
@@ -206,32 +179,11 @@ api.interceptors.response.use(
 
     // Handle network errors (like when the backend is down)
     if (error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED' || !error.response) {
-      // Try to switch to a fallback backend URL
-      if (!isDevelopment) {
-        // Find the current URL index
-        const currentUrl = error.config?.baseURL || API_URL;
-        const currentIndex = BACKEND_URLS.production.indexOf(currentUrl);
-        
-        // If we have more fallbacks to try
-        if (currentIndex < BACKEND_URLS.production.length - 1) {
-          const nextUrl = BACKEND_URLS.production[currentIndex + 1];
-          console.log(`Switching to fallback backend: ${nextUrl}`);
-          
-          // Update the API base URL
-          api.defaults.baseURL = nextUrl;
-          
-          // Retry the request with the new URL
-          if (error.config) {
-            error.config.baseURL = nextUrl;
-            return api(error.config);
-          }
-        } else {
-          // We've tried all backends
-          toast.error('Backend services are currently unavailable. Please try again later.');
-        }
+      // Show appropriate error message based on environment
+      if (isDevelopment) {
+        toast.error('Network error. Please make sure the backend server is running at http://localhost:5000');
       } else {
-        // In development, just show a message
-        toast.error('Cannot connect to the backend server. Make sure your local backend is running.');
+        toast.error('Unable to connect to the server. Please check your internet connection and try again.');
       }
       
       return Promise.reject(error);
@@ -494,49 +446,114 @@ export const expensesAPI = {
 
 // Budgets API
 export const budgetsAPI = {
+  // Get all budgets for the current user
   getAll: async () => {
     try {
       const response = await api.get('/budgets');
+      if (!response.data || !response.data.success) {
+        throw new Error(response.data?.message || 'Failed to fetch budgets');
+      }
       return response;
     } catch (error) {
       console.error('Error fetching budgets:', error);
-      throw error;
+      throw error.response?.data || error;
     }
   },
+  
+  // Get a specific budget by ID
   getById: async (id) => {
     try {
       const response = await api.get(`/budgets/${id}`);
+      if (!response.data || !response.data.success) {
+        throw new Error(response.data?.message || 'Budget not found');
+      }
       return response;
     } catch (error) {
       console.error(`Error fetching budget ${id}:`, error);
-      throw error;
+      throw error.response?.data || error;
     }
   },
+  
+  // Create a new budget
   create: async (budget) => {
     try {
-      const response = await api.post('/budgets', budget);
+      // Ensure required fields are present
+      if (!budget.name || !budget.amount || !budget.category) {
+        throw new Error('Missing required fields: name, amount, and category are required');
+      }
+      
+      const response = await api.post('/budgets', {
+        name: budget.name,
+        amount: parseFloat(budget.amount),
+        category: budget.category,
+        period: budget.period || 'monthly',
+        planId: budget.planId || null,
+        planName: budget.planName || null
+      });
+      
+      if (!response.data || !response.data.success) {
+        throw new Error(response.data?.message || 'Failed to create budget');
+      }
+      
       return response;
     } catch (error) {
       console.error('Error creating budget:', error);
-      throw error;
+      throw error.response?.data || error;
     }
   },
+  
+  // Update an existing budget
   update: async (id, updates) => {
     try {
-      const response = await api.put(`/budgets/${id}`, updates);
+      // Only include defined fields in the update
+      const updateData = {};
+      if (updates.name !== undefined) updateData.name = updates.name;
+      if (updates.amount !== undefined) updateData.amount = parseFloat(updates.amount);
+      if (updates.category !== undefined) updateData.category = updates.category;
+      if (updates.period !== undefined) updateData.period = updates.period;
+      if (updates.planId !== undefined) updateData.planId = updates.planId;
+      if (updates.planName !== undefined) updateData.planName = updates.planName;
+      
+      const response = await api.put(`/budgets/${id}`, updateData);
+      
+      if (!response.data || !response.data.success) {
+        throw new Error(response.data?.message || 'Failed to update budget');
+      }
+      
       return response;
     } catch (error) {
       console.error(`Error updating budget ${id}:`, error);
-      throw error;
+      throw error.response?.data || error;
     }
   },
+  
+  // Delete a budget
   delete: async (id) => {
     try {
       const response = await api.delete(`/budgets/${id}`);
+      
+      if (!response.data || !response.data.success) {
+        throw new Error(response.data?.message || 'Failed to delete budget');
+      }
+      
       return response;
     } catch (error) {
       console.error(`Error deleting budget ${id}:`, error);
-      throw error;
+      throw error.response?.data || error;
+    }
+  },
+  
+  // Get budgets by plan ID
+  getByPlanId: async (planId) => {
+    try {
+      const response = await api.get(`/budgets/plan/${planId}`);
+      if (!response.data || !response.data.success) {
+        throw new Error(response.data?.message || 'Failed to fetch budget plan');
+      }
+      return response;
+    } catch (error) {
+      console.error(`Error fetching budget plan ${planId}:`, error);
+      throw error.response?.data || error;
     }
   }
 };
